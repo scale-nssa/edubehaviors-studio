@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}{{ d.title }} — EduBehaviors Studio{% endblock %}
+{% block body %}
+<div class="row-between">
+  <h1>{{ d.title }}{% if d.bundled %} <span class="pill">bundled</span>{% endif %}</h1>
+  <a class="btn ghost" href="{{ url_for('datasets.index') }}">All datasets</a>
+</div>
+{% if d.description %}<p class="muted">{{ d.description }}</p>{% endif %}
+{% if d.source_file %}<p class="muted small">Converted from {{ d.source_file }} on {{ d.uploaded_at }}.</p>{% endif %}
+{% if d.bundled and d.id == 'talkmoves' %}
+<p class="muted small">TalkMoves, CC BY-NC-SA 4.0. Non-commercial use only; credit
+the TalkMoves authors; anything derived from it, including your annotations,
+shares these terms.</p>
+{% endif %}
+
+<div class="cols">
+<div class="card">
+  <h3>Sessions</h3>
+  <table class="small">
+    <tr><th>Session</th><th>Utterances</th><th>Tutor</th><th>Student</th></tr>
+    {% for s in sessions %}
+    <tr {% if session and s.id == session.session_id %}class="rowflag"{% endif %}>
+      <td><a href="{{ url_for('datasets.detail', dataset_id=d.id, s=s.id) }}">{{ s.id }}</a>
+        {% if s.too_long %}<span class="muted" title="Longer than {{ max_len }} utterances; never drawn">(too long)</span>{% endif %}</td>
+      <td>{{ s.n }}</td><td>{{ s.tutor }}</td><td>{{ s.student }}</td></tr>
+    {% endfor %}
+  </table>
+</div>
+
+{% if session %}
+<div class="card">
+  <h3>{{ session.session_id }}</h3>
+  <p class="muted small">As the annotating models will see it.</p>
+  <div class="transcript" style="max-height:32rem;overflow-y:auto">
+    {% for u in session.utterances[:400] %}
+    <div class="utt"><span class="muted mono">{{ u.index }}</span>
+      <strong>[{{ u.role|capitalize }}]</strong> {{ u.text }}</div>
+    {% endfor %}
+    {% if session.utterances|length > 400 %}<p class="muted">&hellip; {{ session.utterances|length - 400 }} more</p>{% endif %}
+  </div>
+</div>
+{% endif %}
+</div>
+
+{% if not d.bundled %}
+<div class="card">
+  <h3>Delete</h3>
+  {% if in_use %}
+  <p class="warn small">Cannot be deleted while {{ in_use|length }} construct(s) use it:
+    {% for c in in_use %}<strong>{{ c['name'] }}</strong>{% if not loop.last %}, {% endif %}{% endfor %}.
+    Their rounds, cached annotations and judgements all point at this dataset's sessions.</p>
+  {% else %}
+  <form method="post" action="{{ url_for('datasets.delete', dataset_id=d.id) }}"
+        onsubmit='return confirm({{ ("Delete " ~ d.title ~ "? This removes the converted file.")|tojson }})'>
+    <button class="ghost" type="submit">Delete this dataset</button>
+  </form>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}

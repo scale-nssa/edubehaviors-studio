@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="card">
+  <h1>Annotating</h1>
+  <p class="muted">Session <code>{{ rnd['session_id'] }}</code> &middot; one call per
+  (criterion &times; model), two models.</p>
+  {% if rnd['chained'] %}
+  {# Nobody asked for this round; the app started it. Say so, and say why. #}
+  <div class="warn small">
+    <strong>Hunting for more positive cases.</strong>
+    {% if short_labels %}
+      Fewer than {{ min_positives }} utterances have been labelled
+      {% for l in short_labels %}<strong>{{ l }}</strong>{% if not loop.last %},
+      {% endif %}{% endfor %} so far, which is too few to revise against, so
+      this session was added automatically.
+    {% else %}
+      Some label had too few examples to revise against, so this session was
+      added automatically.
+    {% endif %}
+  </div>
+  {% endif %}
+  <div hx-get="{{ url_for('progress', rid=rnd['id']) }}" hx-trigger="load, every 1200ms" hx-swap="outerHTML">
+    <div class="bar"><div class="fill" style="width:2%"></div></div>
+    <p class="muted">starting…</p>
+  </div>
+</div>
+{% endblock %}

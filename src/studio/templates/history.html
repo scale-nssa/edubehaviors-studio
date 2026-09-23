@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="card">
+  <div class="row-between">
+    <h1>Schema history</h1>
+    <span class="muted">currently on <strong>v{{ c['version'] }}</strong></span>
+  </div>
+  <p class="muted small">Restoring is append-only: it writes a new version with the
+  restored content, parented to the one you restored. Nothing is deleted, and the
+  versions you branched away from stay reachable.</p>
+
+  <table>
+    <tr><th>version</th><th>change</th><th>criteria</th><th>note</th><th>when</th><th></th></tr>
+    {% for v in versions %}
+    <tr {% if v.version == c['version'] %}class="here"{% endif %}>
+      <td class="mono" style="padding-left:{{ 0.5 + v.depth * 1.1 }}rem">
+        {% if v.depth %}<span class="muted">└</span>{% endif %}
+        v{{ v.version }}
+        {% if v.version == c['version'] %}<span class="pill">current</span>{% endif %}
+      </td>
+      <td class="muted small">
+        {% if v.added %}+{{ v.added }}{% endif %}
+        {% if v.removed %}−{{ v.removed }}{% endif %}
+        {% if v.changed %}~{{ v.changed }}{% endif %}
+        {% if not (v.added or v.removed or v.changed) %}—{% endif %}
+      </td>
+      <td>{{ v.n_criteria }}</td>
+      <td class="small">{{ v.note }}</td>
+      <td class="muted small">{{ v.created_at }}</td>
+      <td>
+        {% if v.version != c['version'] %}
+        <form method="post" action="{{ url_for('restore', cid=c['id'], version=v.version) }}">
+          <button class="small ghost" type="submit">restore</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  <p><a class="btn ghost" href="{{ url_for('construct_home', cid=c['id']) }}">Back</a></p>
+</div>
+{% endblock %}

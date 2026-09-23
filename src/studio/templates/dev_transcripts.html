@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Transcripts — dev{% endblock %}
+{% block body %}
+<div class="row-between">
+  <h1>Transcripts <span class="muted">every corpus, as the annotator sees it</span></h1>
+  <span class="muted small">{{ cards|length }} datasets</span>
+</div>
+<p class="muted small">Post-conversion: roles already mapped to
+<span class="rolekey tutor">tutor</span> /
+<span class="rolekey student">student</span> /
+<span class="rolekey other">other</span>, indices renumbered 0-based, dropped
+rows already gone. <strong>Only tutor rows are labelled</strong> at the default
+scope; everything else is context the model reads in the prompt. Change the
+session in any window and all selections persist.</p>
+
+<form method="get" class="devgrid">
+  {% for c in cards %}
+  <div class="card devcard">
+    <div class="row-between">
+      <h3>{{ c.title }}</h3>
+      <span class="muted small">{{ c.n_sessions if c.n_sessions is defined else 0 }} sessions</span>
+    </div>
+
+    {% if c.error %}
+      <div class="warn small">Could not load: {{ c.error }}</div>
+    {% else %}
+      <select name="{{ c.id }}" onchange="this.form.submit()">
+        {% for sid in c.session_ids %}
+        <option value="{{ sid }}" {% if sid == c.chosen %}selected{% endif %}>{{ sid }}</option>
+        {% endfor %}
+      </select>
+
+      <p class="muted small rolecounts">
+        {{ c.utterances|length }} utterances &middot;
+        {% for role, n in c.roles.items() %}
+          <span class="rolekey {{ role }}">{{ role }} {{ n }}</span>
+        {% endfor %}
+      </p>
+
+      <div class="transcript">
+        {% for u in c.utterances %}
+        <div class="utt {{ u.role }}">
+          <span class="ix">{{ u.index }}</span>
+          <span class="role">{{ u.role }}</span>
+          <span class="txt">{{ u.text }}{% if not u.text.strip() %}<em class="muted">(blank)</em>{% endif %}</span>
+        </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</form>
+{% endblock %}

@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% block title %}Panel — EduBehaviors Studio{% endblock %}
+{% block body %}
+<div class="row-between">
+  <h1>Control panel</h1>
+  <span class="muted small" id="heartbeat">connecting…</span>
+</div>
+
+<div class="tiles" id="totals"></div>
+
+<div class="cols">
+  <div>
+    <h3>Participants</h3>
+    <table class="paneltable"><thead>
+      <tr><th>who</th><th>last seen</th><th>construct</th><th>where they are</th>
+          <th class="num">rounds</th><th class="num">judged</th><th>flags</th></tr>
+    </thead><tbody id="people"></tbody></table>
+    <p class="muted small">Flags are the point of this table: <b>stuck</b> is a
+    round annotating for over four minutes, <b>idle</b> is five minutes unseen
+    mid-round, <b>failed</b> needs you to walk over.</p>
+
+    <h3>Live rounds</h3>
+    <table class="paneltable"><thead>
+      <tr><th>#</th><th>who</th><th>session</th><th>state</th>
+          <th class="num">done</th><th class="num">elapsed</th><th>last tick</th></tr>
+    </thead><tbody id="rounds"></tbody></table>
+
+    <h3>Corpus</h3>
+    <table class="paneltable"><thead>
+      <tr><th>session</th><th class="num">constructs</th></tr>
+    </thead><tbody id="corpus"></tbody></table>
+  </div>
+
+  <div>
+    <h3>Models</h3>
+    <table class="paneltable"><thead>
+      <tr><th>model</th><th class="num">in flight</th><th class="num">ok</th>
+          <th class="num">failed</th><th class="num">latency</th>
+          <th class="num">tokens</th><th class="num">$</th></tr>
+    </thead><tbody id="models"></tbody></table>
+    <p class="muted small">Watch latency, not errors: a rate limit shows up as
+    the 2/4/8/20s backoff climbing well before anything fails. Spend is an
+    estimate — it includes retries, and excludes calls that died before
+    reporting usage.</p>
+
+    <h3>Events</h3>
+    <div class="eventlog" id="events"></div>
+  </div>
+</div>
+
+<script>
+const fmt = {
+  age(s) {
+    if (s === null || s === undefined) return '—';
+    if (s < 60) return Math.round(s) + 's';
+    if (s < 3600) return Math.round(s / 60) + 'm';
+    return (s / 3600).toFixed(1) + 'h';
+  },
+  money(v) { return '$' + (v || 0).toFixed(2); },
+  num(v) { return (v || 0).toLocaleString(); },
+  esc(s) { const d = document.createElement('div'); d.textContent = s ?? ''; return d.innerHTML; },
+};
+
+function seenClass(s) {
+  if (s === null || s === undefined) return 'muted';
+  if (s < 60) return 'ok';
+  if (s < 300) return 'muted';
+  return 'bad';
+}
+
+function render(d) {
+  document.getElementById('heartbeat').textContent =
+    `updated ${new Date().toLocaleTimeString()} · up ${fmt.age(d.uptime_s)}`;
+
+  const t = d.totals;
+  document.getElementById('totals').innerHTML = `
+    <div class="tile"><b>${t.people}</b><span>people</span></div>
+    <div class="tile ${t.flagged ? 'bad' : ''}"><b>${t.flagged}</b><span>flagged</span></div>
+    <div class="tile"><b>${t.in_flight}</b><span>calls in flight</span></div>
+    <div class="tile"><b>${t.constructs}</b><span>constructs</span></div>
+    <div class="tile"><b>${t.reviews}</b><span>utterances judged</span></div>
+    <div class="tile"><b>${fmt.money(t.session_cost_usd)}</b><span>spend this process<br>
+      <span class="muted">${fmt.money(t.lifetime_cache_cost_usd)} cached lifetime</span></span></div>`;
+
+  document.getElementById('people').innerHTML = d.participants.map(p => `
+    <tr>
+      <td><b>${fmt.esc(p.name)}</b></td>
+      <td class="${seenClass(p.idle_s)}">${fmt.age(p.idle_s)}</td>
+      <td>${fmt.esc(p.construct || '—')}${p.phase ? ` <span class="pill">${fmt.esc(p.phase)}</span>` : ''}</td>
+      <td class="muted small">${fmt.esc(p.where)}</td>
+      <td class="num">${p.rounds}</td>
+      <td class="num">${p.reviewed}</td>
+      <td>${p.flags.map(f => `<span class="chip bad">${fmt.esc(f)}</span>`).join(' ')}
+          ${p.error ? `<div class="muted small">${fmt.esc(p.error)}</div>` : ''}</td>
+    </tr>`).join('') || '<tr><td colspan="7" class="muted">Nobody yet.</td></tr>';
+
+  document.getElementById('rounds').innerHTML = d.rounds.map(r => `
+    <tr>
+      <td class="mono">${r.round_id}</td>
+      <td>${fmt.esc(r.owner)}</td>
+      <td class="muted small clip">${fmt.esc(r.session)}</td>
+      <td>${r.status === 'queued'
+            ? `<span class="chip">queued · ${r.position} ahead</span>`
+            : `<span class="chip ${r.status === 'failed' ? 'bad' : (r.status === 'complete' ? 'good' : '')}">${r.status}</span>`}</td>
+      <td class="num">${r.done}/${r.total}${r.failed ? ` <span class="bad">(${r.failed}✗)</span>` : ''}</td>
+      <td class="num">${fmt.age(r.elapsed_s)}</td>
+      <td class="muted small clip">${fmt.esc(r.last)}</td>
+    </tr>`).join('') || '<tr><td colspan="7" class="muted">No rounds running.</td></tr>';
+
+  document.getElementById('models').innerHTML = d.models.map(m => `
+    <tr>
+      <td class="mono small">${fmt.esc(m.model)}</td>
+      <td class="num">${m.in_flight}</td>
+      <td class="num">${m.completed}</td>
+      <td class="num ${m.failed ? 'bad' : ''}">${m.failed}</td>
+      <td class="num">${m.last_latency_s ? m.last_latency_s.toFixed(1) + 's' : '—'}</td>
+      <td class="num muted">${fmt.num(m.in_tokens)}/${fmt.num(m.out_tokens)}</td>
+      <td class="num">${fmt.money(m.cost_usd)}</td>
+    </tr>`).join('');
+
+  document.getElementById('corpus').innerHTML = d.corpus.map(c => `
+    <tr><td class="small clip">${fmt.esc(c.session)}</td><td class="num">${c.constructs}</td></tr>`
+  ).join('') || '<tr><td colspan="2" class="muted">No sessions in use.</td></tr>';
+
+  document.getElementById('events').innerHTML = d.events.map(e => {
+    const when = new Date(e.t * 1000).toLocaleTimeString();
+    const rest = Object.entries(e).filter(([k]) => k !== 't' && k !== 'kind')
+      .map(([k, v]) => `${k}=${fmt.esc(String(v))}`).join(' ');
+    return `<div><span class="muted">${when}</span> <b>${fmt.esc(e.kind)}</b> ${rest}</div>`;
+  }).join('') || '<div class="muted">No events yet.</div>';
+}
+
+async function tick() {
+  try {
+    const r = await fetch('{{ url_for("panel.snapshot") }}', {cache: 'no-store'});
+    render(await r.json());
+  } catch (err) {
+    document.getElementById('heartbeat').textContent = 'disconnected — retrying';
+  }
+}
+tick();
+setInterval(tick, 2000);
+</script>
+{% endblock %}

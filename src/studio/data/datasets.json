@@ -1,0 +1,11 @@
+[
+  {
+    "id": "talkmoves",
+    "title": "TalkMoves",
+    "description": "Classroom maths discussion (the original 20-session subset). CC BY-NC-SA 4.0.",
+    "file": "talkmoves_20.jsonl",
+    "sessions": 20,
+    "utterances": 3057,
+    "tutor_utterances": 1747
+  }
+]

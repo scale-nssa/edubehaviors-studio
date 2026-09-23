@@ -1,0 +1,28 @@
+<div data-status="{{ p.round_status }}" {% if p.round_status == 'annotating' %}hx-get="{{ request.path }}" hx-trigger="every 1200ms" hx-swap="outerHTML"{% endif %}>
+  {% if p.status == 'queued' %}
+    {# A visible queue reads as a working system; an invisible one reads as a
+       hang. This is the screen twenty people stare at simultaneously. #}
+    <div class="bar"><div class="fill indet"></div></div>
+    <p class="muted">Queued{% if p.position %}, {{ p.position }} round(s) ahead{% endif %}.
+    Annotation takes about 90 seconds once it starts.</p>
+  {% else %}
+    <div class="bar"><div class="fill" style="width:{{ p.pct }}%"></div></div>
+    <p class="muted">{{ p.done }} / {{ p.total }} calls{% if p.failed %} &middot; <span class="bad">{{ p.failed }} failed</span>{% endif %}</p>
+  {% endif %}
+  {% if p.recent %}
+  <ul class="ticker">{% for r in p.recent %}<li>{{ r }}</li>{% endfor %}</ul>
+  {% endif %}
+  {% if p.round_status != 'annotating' %}
+    {% if p.round_status == 'failed' %}
+      <p class="bad">Annotation failed: {{ p.error }}</p>
+    {% else %}
+      {% if p.chained %}
+      <p class="muted"><strong>Hunting for more positive cases.</strong> Some
+      label still has too few examples to revise against, so the next session
+      is being annotated too.</p>
+      {% endif %}
+      <p><a class="btn" href="{{ p.next_url }}">Continue &rarr;</a></p>
+      <script>window.location = {{ p.next_url|tojson }};</script>
+    {% endif %}
+  {% endif %}
+</div>

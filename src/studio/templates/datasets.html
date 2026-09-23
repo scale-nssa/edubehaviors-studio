@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Datasets — EduBehaviors Studio{% endblock %}
+{% block body %}
+<h1>Datasets</h1>
+<p class="muted">The transcripts a construct's rounds draw from. A construct is
+tied to one dataset for life, so choose it when you create the construct.</p>
+
+<div class="card">
+  <table>
+    <tr><th>Dataset</th><th>Sessions</th><th>Utterances</th><th>Tutor</th>
+        <th>Used by</th><th></th></tr>
+    {% for d in datasets %}
+    <tr>
+      <td><a href="{{ url_for('datasets.detail', dataset_id=d.id) }}">{{ d.title }}</a>
+        {% if d.bundled %}<span class="pill">bundled</span>{% endif %}
+        {% if d.description %}<br><span class="muted small">{{ d.description }}</span>{% endif %}
+        {% if d.error %}<br><span class="bad small">{{ d.error }}</span>{% endif %}</td>
+      <td>{{ d.loaded_sessions }}</td>
+      <td>{{ '{:,}'.format(d.utterances or 0) }}</td>
+      <td>{{ '{:,}'.format(d.tutor_utterances or 0) }}</td>
+      <td>{{ d.constructs }} construct{{ '' if d.constructs == 1 else 's' }}</td>
+      <td><a class="small" href="{{ url_for('datasets.detail', dataset_id=d.id) }}">preview</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+  <p class="muted small">TalkMoves is licensed CC BY-NC-SA 4.0: non-commercial use
+  only, with attribution, and anything you derive from it &mdash; including the
+  annotations you make here &mdash; shares those terms. See the README.</p>
+</div>
+
+<h2>Add your own</h2>
+<div class="card">
+  <p>A CSV with <strong>one row per utterance</strong>. It needs a column for the
+  session (which transcript the row belongs to), the speaker, and the text. An
+  order column and a gold label column are optional. The next step shows the file
+  and lets you say which column is which, and what each speaker is.</p>
+  <form method="post" action="{{ url_for('datasets.upload') }}" enctype="multipart/form-data">
+    <input type="file" name="file" accept=".csv,.tsv,text/csv" required>
+    <button type="submit">Upload &amp; map columns &rarr;</button>
+  </form>
+  <p class="muted small">Stays on this machine: converted and stored in your data
+  directory, never sent anywhere until a round sends a transcript to the models
+  you chose.</p>
+</div>
+{% endblock %}

@@ -1,0 +1,255 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="row-between">
+  <h1>Utterance {{ pos + 1 }} <span class="muted">of {{ n }}</span></h1>
+  <span>
+    {% if why %}<span class="chip">picked for: {{ why }}</span>{% endif %}
+    <span class="muted small">{{ n_judged }} of {{ n }} judged this round</span>
+    <a class="btn small ghost" href="{{ url_for('round_summary', cid=c['id'], rid=rnd['id']) }}">
+      session board</a>
+  </span>
+</div>
+<div class="reviewgrid">
+<div class="card scrollcol">
+
+  <div class="transcript" id="transcript">
+    {% for u in window %}
+    <div class="utt {{ u.role }} {% if u.index == target %}target{% endif %}"
+         {% if u.index == target %}id="target"{% endif %}>
+      <span class="ix">{{ u.index }}</span>
+      <span class="role">{{ u.role }}</span>
+      <span class="txt">{{ u.text }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% set blanks = window | selectattr('text', 'equalto', '') | list %}
+  {% if blanks %}
+  <div class="warn small">
+    {{ blanks|length }} turn(s) nearby have no transcribed text in the source
+    (e.g. {{ blanks[0].role }} at {{ blanks[0].index }}). If this utterance
+    restates or responds to one of them, there is no way to verify that from the
+    transcript — the model is inferring it.
+  </div>
+  {% endif %}
+
+  <script>
+    (function () {
+      var box = document.getElementById('transcript'),
+          t = document.getElementById('target');
+      if (!box || !t) return;
+      // Run after layout so clientHeight is real; offsetTop is relative to the
+      // nearest positioned ancestor, so measure against the box directly.
+      requestAnimationFrame(function () {
+        var top = t.getBoundingClientRect().top - box.getBoundingClientRect().top;
+        box.scrollTop = box.scrollTop + top - box.clientHeight / 2 + t.offsetHeight / 2;
+      });
+    })();
+  </script>
+
+</div>
+
+<div class="card scrollcol">
+  <form method="post" action="{{ url_for('review_submit', cid=c['id'], rid=rnd['id'], idx=target) }}">
+    {% if next_index is not none %}<input type="hidden" name="next_index" value="{{ next_index }}">{% endif %}
+
+    <h3>What the schema says</h3>
+    {% if positive_label %}
+      {# Binary: one question, so give the answer rather than a candidate set.
+
+         The split, when there is one, is the honest caveat on that answer:
+         consensus firing is an OR across the models, so one model alone can
+         carry the whole verdict. The tooltip says who said what, because
+         "models disagree" without the detail just makes the answer look
+         untrustworthy without saying how. #}
+      {%- set split -%}
+        {%- if disagree %}, <span class="tip tipmulti" data-tip="{% for m, said in model_labels %}{{ m }}: {{ said }}{% if not loop.last %}
+{% endif %}{% endfor %}">but models disagree</span>{% endif -%}
+      {%- endset -%}
+      {% if positive_label in res.candidates %}
+        <p><span class="pill">{{ positive_label }}</span>
+          <span class="muted small">the schema says this behaviour is present{{ split }}</span></p>
+      {% else %}
+        {# It is labelled, and the label is the catch-all. Saying only "not X"
+           hid that, and "nothing fired for it" was wrong half the time: this
+           branch covers BOTH a silent utterance falling through to the
+           catch-all AND a catch-all criterion firing on it. The outcome tells
+           them apart.
+
+           No models-disagree caveat here, and none is possible: consensus
+           firing is an OR, so reaching this branch means NO model fired a
+           positive criterion, and without one every model resolves to the
+           catch-all. Verified exhaustively over all 1,024 negative-branch
+           firing states of a 12-criterion construct. #}
+        {% if res.outcome.value == 'default' %}
+        {# Nothing fired. A weaker claim than the other two, so it does not get
+           their solid pill or their sentence. #}
+        <p><span class="pill catchall">{{ catch_all }}</span>
+          <span class="muted small">nothing fired, so it takes the catch-all</span></p>
+        {% else %}
+        {# A criterion for the catch-all fired, so this is a determination from
+           evidence exactly as the positive is. Same pill, same sentence shape —
+           the only difference that matters is which way it went. #}
+        <p><span class="pill">{{ catch_all }}</span>
+          <span class="muted small">the schema says this behaviour is absent</span></p>
+        {% endif %}
+      {% endif %}
+    {% elif res.candidates %}
+      <p>Candidate labels: {% for l in res.candidates %}<span class="pill">{{ l }}</span>{% endfor %}
+        <span class="muted small">({{ res.outcome.value }})</span></p>
+    {% else %}
+      <p class="muted">No label. The schema is silent on this utterance.</p>
+    {% endif %}
+    {% if res.candidates|length > 1 %}
+      <p class="muted small">Every edge is evidence, so nothing can subtract a
+      label another criterion raised. Two candidates means two criteria both fire
+      here and only their wording can separate them.</p>
+    {% endif %}
+
+    <h3>1. What is the correct label?</h3>
+    <div class="labels">
+      {% for l in labels %}
+      <label class="radio big">
+        <input type="radio" name="gold_label" value="{{ l }}" required
+          {% if existing and existing['gold_label'] == l %}checked{% endif %}> {{ l }}
+      </label>
+      {% endfor %}
+    </div>
+
+    <h3>2. Are the criterion judgements right?</h3>
+    <p class="muted small">Grouped by the label each criterion bears on. A criterion
+    that bears on several labels appears under each &mdash; it raises all of them.
+    Flip any the model got wrong; flipping it anywhere flips it everywhere.</p>
+
+    {% if gates %}
+    <div class="gates">
+      <h4>Preconditions <span class="muted small">gate their sub-criteria</span></h4>
+      <table class="criteria">
+        {% for cr in gates %}
+        {% set cur = verdicts.get(cr.id|string, firing.get(cr.id, False)) %}
+        <tr>
+          <td class="mono {{ 'fired' if firing.get(cr.id) else '' }}">{{ 'T' if firing.get(cr.id) else 'F' }}</td>
+          <td><span class="muted mono small">#{{ cr.id }}</span> {{ cr.text }}</td>
+          <td class="nowrap">
+            <label class="radio"><input type="radio" data-crit="{{ cr.id }}"
+              name="crit_{{ cr.id }}__gate" value="true" {% if cur %}checked{% endif %}> true</label>
+            <label class="radio"><input type="radio" data-crit="{{ cr.id }}"
+              name="crit_{{ cr.id }}__gate" value="false" {% if not cur %}checked{% endif %}> false</label>
+          </td>
+        </tr>
+        {% endfor %}
+      </table>
+      <p class="muted small">These carry no labels themselves. Sub-criteria below
+      are only asked where their gate is true.</p>
+    </div>
+    {% endif %}
+
+    {% for g in groups %}
+    {% if g.n_true == 0 %}
+    <details class="labelgroup {% if g.predicted %}predicted{% endif %}">
+      <summary>{{ g.label }} <span class="muted small">{{ g.rows|length }} criteria</span></summary>
+      <table class="criteria">
+        {% for cr in g.rows %}
+        {% set cur = verdicts.get(cr.id|string, firing.get(cr.id, False)) %}
+        <tr>
+          <td class="mono {{ 'fired' if firing.get(cr.id) else '' }}">{{ 'T' if firing.get(cr.id) else 'F' }}</td>
+          <td><span class="muted mono small">#{{ cr.id }}</span>
+            {% if cr.parent_id %}<span class="subtag">sub</span>{% endif %}
+            {{ cr.text }}</td>
+          <td class="nowrap">
+            {# A criterion with edges to several labels renders once per label.
+               Radio groups are page-global by name, so without a per-appearance
+               name only the first appearance could ever show a checked state —
+               the rest rendered blank. Each appearance gets its own group and
+               the JS below keeps them in step; the server reads any one. #}
+            <label class="radio"><input type="radio" data-crit="{{ cr.id }}"
+              name="crit_{{ cr.id }}__{{ loop.index0 }}_{{ g.label }}" value="true"
+              {% if cur %}checked{% endif %}> true</label>
+            <label class="radio"><input type="radio" data-crit="{{ cr.id }}"
+              name="crit_{{ cr.id }}__{{ loop.index0 }}_{{ g.label }}" value="false"
+              {% if not cur %}checked{% endif %}> false</label>
+          </td>
+        </tr>
+        {% endfor %}
+      </table>
+    </details>
+    {% else %}
+    <div class="labelgroup {% if g.predicted %}predicted{% endif %}">
+      <h4>{{ g.label }}
+        {% if g.predicted %}<span class="chip good">predicted</span>{% endif %}
+        {% if g.n_true %}<span class="muted small">{{ g.n_true }} firing</span>{% endif %}
+      </h4>
+      <table class="criteria">
+        {% for cr in g.rows %}
+        {% set cur = verdicts.get(cr.id|string, firing.get(cr.id, False)) %}
+        <tr>
+          <td class="mono {{ 'fired' if firing.get(cr.id) else '' }}">{{ 'T' if firing.get(cr.id) else 'F' }}</td>
+          <td><span class="muted mono small">#{{ cr.id }}</span>
+            {% if cr.parent_id %}<span class="subtag">sub</span>{% endif %}
+            {{ cr.text }}</td>
+          <td class="nowrap">
+            {# A criterion with edges to several labels renders once per label.
+               Radio groups are page-global by name, so without a per-appearance
+               name only the first appearance could ever show a checked state —
+               the rest rendered blank. Each appearance gets its own group and
+               the JS below keeps them in step; the server reads any one. #}
+            <label class="radio"><input type="radio" data-crit="{{ cr.id }}"
+              name="crit_{{ cr.id }}__{{ loop.index0 }}_{{ g.label }}" value="true"
+              {% if cur %}checked{% endif %}> true</label>
+            <label class="radio"><input type="radio" data-crit="{{ cr.id }}"
+              name="crit_{{ cr.id }}__{{ loop.index0 }}_{{ g.label }}" value="false"
+              {% if not cur %}checked{% endif %}> false</label>
+          </td>
+        </tr>
+        {% endfor %}
+      </table>
+    </div>
+    {% endif %}
+    {% endfor %}
+
+    {% if res.candidates|length == 2 %}
+    {% set pair = res.candidates|list|sort %}
+    <h3>3. What separates these two labels? <span class="muted">(optional)</span></h3>
+    <p class="muted small"><strong>{{ pair[0] }}</strong> vs
+    <strong>{{ pair[1] }}</strong> &mdash; what distinguishes them here that the
+    schema is not understanding? Notes about a boundary are collected together,
+    so several of them build into an argument for changing it.</p>
+    <textarea name="boundary_note" rows="3"></textarea>
+    <h3>4. Anything else <span class="muted">(optional)</span></h3>
+    {% else %}
+    <h3>3. Note <span class="muted">(optional)</span></h3>
+    {% endif %}
+    <textarea name="note" rows="3">{{ existing['note'] if existing else '' }}</textarea>
+
+    {% if reveal %}
+      <p class="muted small">{% if disagree %}The two models disagreed on this utterance.{% else %}Both models agreed here.{% endif %}</p>
+    {% endif %}
+
+    <button type="submit">{{ 'Save &amp; next &rarr;'|safe if next_index is not none else 'Save &amp; finish the round &rarr;'|safe }}</button>
+  </form>
+
+  <script>
+    // Keep every appearance of the same criterion in step. The help text above
+    // promises "flip it anywhere flips it everywhere"; this is what delivers it.
+    document.addEventListener('change', function (ev) {
+      var el = ev.target;
+      if (!el.dataset || !el.dataset.crit) return;
+      document.querySelectorAll('input[data-crit="' + el.dataset.crit + '"]')
+        .forEach(function (o) { if (o !== el) o.checked = (o.value === el.value); });
+    });
+  </script>
+
+  <div class="queue">
+    {% for i in queue %}
+      <a class="dot {% if i in judged %}done{% endif %} {% if i == target %}here{% endif %}"
+         title="utterance {{ i }}{% if i in judged %} — judged{% endif %}"
+         href="{{ url_for('review', cid=c['id'], rid=rnd['id'], i=i) }}">{{ i }}</a>
+    {% endfor %}
+  </div>
+  <p class="muted small">The ten this round selected. Jump to any of them, or
+  {% if next_index is not none %}
+    <a href="{{ url_for('review', cid=c['id'], rid=rnd['id'], i=next_index) }}">skip this one</a>
+  {% else %}skip once there is another to go to{% endif %}
+  &mdash; nothing is saved unless you submit.</p>
+</div>
+</div>
+{% endblock %}

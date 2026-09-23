@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}EduBehaviors Studio{% endblock %}</title>
+  {# Vendored, not from a CDN: local mode must work offline (with a local
+     model server) and must not tell a third party every page you open. #}
+  <script src="{{ url_for('static', filename='vendor/htmx-1.9.12.min.js') }}"></script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+</head>
+<body>
+<header>
+  <a class="brand" href="{{ url_for('home') }}">
+    <img src="{{ url_for('static', filename='img/scale-logo.png') }}" alt="Stanford SCALE Initiative" class="logo">
+    <span class="brandtext">EduBehaviors&nbsp;Studio</span>
+  </a>
+  <nav>
+    {% if request.view_args and request.view_args.get('cid') %}
+      <a href="{{ url_for('construct_home', cid=request.view_args['cid']) }}">construct</a>
+    {% endif %}
+    {% if g.reviewer %}
+      {# Models and Datasets are the whole of "set this thing up"; they sit in
+         the nav so a new user finds both without being told they exist. #}
+      <a href="{{ url_for('setup.models') }}"
+         {% if not models_ready %}class="navwarn" title="No verified models yet"{% endif %}>
+        models{% if not models_ready %} &#9679;{% endif %}</a>
+      <a href="{{ url_for('datasets.index') }}">datasets</a>
+      <a href="{{ url_for('setup.models') }}#spend" class="spendbadge"
+         title="Estimated spend on this data directory, all time">~${{ '%.2f'|format(spend_lifetime) }}</a>
+    {% endif %}
+    {# No admin link. The route still works — type /admin — but it is an
+       operator tool, and on a shared URL with no auth every participant can
+       reach it. Keeping it out of the nav is not security; it is just not
+       advertising it. #}
+    {% if g.reviewer and not g.single_user %}
+      <span class="who">{{ g.reviewer['display_name'] }}</span>
+      <a href="{{ url_for('logout') }}" title="Hand the machine to someone else">switch user</a>
+    {% elif not g.reviewer %}
+      <a href="{{ url_for('logout') }}">sign out</a>
+    {% endif %}
+  </nav>
+</header>
+<main>
+  {% with messages = get_flashed_messages() %}
+    {% for m in messages %}<div class="warn flash">{{ m }}</div>{% endfor %}
+  {% endwith %}
+  {% block body %}{% endblock %}
+</main>
+</body>
+</html>

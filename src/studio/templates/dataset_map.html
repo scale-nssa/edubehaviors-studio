@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}Map columns — EduBehaviors Studio{% endblock %}
+{% block body %}
+<h1>Add a dataset</h1>
+<p class="muted">{{ source }} &middot; {{ '{:,}'.format(n_rows) }} rows
+&middot; read as {{ encoding }}{% if encoding != 'utf-8-sig' %} &mdash; if the
+preview shows garbled characters, re-save the file as UTF-8{% endif %}.</p>
+
+<div class="card">
+  <h3>The first rows, as read</h3>
+  <div style="overflow-x:auto">
+  <table class="small">
+    <tr>{% for h in header %}<th class="mono">{{ h }}</th>{% endfor %}</tr>
+    {% for r in preview %}
+    <tr>{% for h in header %}<td>{{ (r[h] or '')[:120] }}</td>{% endfor %}</tr>
+    {% endfor %}
+  </table>
+  </div>
+</div>
+
+{% if problems %}
+<div class="warn"><strong>Fix these first:</strong>
+  <ul>{% for p in problems %}<li>{{ p }}</li>{% endfor %}</ul></div>
+{% endif %}
+
+<form method="post" id="mapform">
+<div class="card">
+  <h3>1. Which column is which</h3>
+  <table class="mappingtable">
+    {% for key, label, required in [
+        ('session_id', 'Session id — which transcript a row belongs to', true),
+        ('speaker', 'Speaker', true),
+        ('text', 'Text of the utterance', true),
+        ('order', 'Order within the session (optional; otherwise file order)', false),
+        ('gold', 'Gold label (optional; kept for reference)', false)] %}
+    <tr><td>{{ label }}</td><td>
+      <select name="col_{{ key }}" {% if key == 'speaker' %}onchange="this.form.submit()"{% endif %}>
+        {# A required column with no guess starts on "choose", never on the
+           first column: falling through to it once made the session id the
+           text of every utterance, with counts that still looked plausible. #}
+        <option value="" {% if not form.get('col_' ~ key) %}selected{% endif %}>
+          {% if required %}&mdash; choose &mdash;{% else %}&mdash; none &mdash;{% endif %}</option>
+        {% for h in header %}
+        <option value="{{ h }}" {% if form.get('col_' ~ key) == h %}selected{% endif %}>{{ h }}</option>
+        {% endfor %}
+      </select></td></tr>
+    {% endfor %}
+  </table>
+</div>
+
+<div class="card">
+  <h3>2. Who is speaking</h3>
+  <p class="muted small">This cannot be guessed reliably, so every speaker value
+  in the file is listed. <strong>tutor</strong> and <strong>student</strong> are
+  what a construct's scope selects; <strong>other</strong> is shown to the models
+  as context but never labelled; <strong>drop</strong> removes the rows entirely
+  &mdash; use it for machine events (clicks, page views) that are not speech.
+  The defaults are only guesses.</p>
+  {% if speakers %}
+  <table class="mappingtable">
+    <tr><th>Value in the file</th><th>Rows</th><th>Role</th></tr>
+    {% for value, n in speakers %}
+    <tr><td class="mono">{{ value or '(blank)' }}</td><td>{{ n }}</td><td>
+      <input type="hidden" name="spk__{{ loop.index0 }}" value="{{ value }}">
+      <select name="role__{{ loop.index0 }}">
+        {% for r in roles %}<option value="{{ r }}" {% if chosen[value] == r %}selected{% endif %}>{{ r }}</option>{% endfor %}
+      </select></td></tr>
+    {% endfor %}
+  </table>
+  {% if speakers_truncated %}
+  <p class="warn small">Only the {{ speakers|length }} most common speaker values are
+  listed. Any others become <strong>other</strong>: visible context, never labelled.</p>
+  {% endif %}
+  {% else %}
+  <p class="muted">Pick the speaker column above.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h3>3. Name it</h3>
+  <div class="fieldrow">
+    <div><label>Title</label>
+      <input name="title" value="{{ form.get('title', '') }}" required></div>
+    <div><label>Short name <span class="muted">(lowercase, used in ids)</span></label>
+      <input name="dataset_id" value="{{ form.get('dataset_id', '') }}" class="mono" required></div>
+  </div>
+  <label>Description <span class="muted">(optional)</span></label>
+  <input name="description" value="{{ form.get('description', '') }}">
+  <p class="muted small">Fixed once created. Session ids are stored as
+  <code>shortname:original id</code>, so they cannot collide with another dataset's.</p>
+</div>
+
+{% if built and not problems %}
+<div class="card">
+  <h3>4. Check the counts</h3>
+  <table class="kv">
+    <tr><td>Sessions</td><td>{{ built.sessions|length }}</td></tr>
+    <tr><td>Utterances kept</td><td>{{ '{:,}'.format(built.n_utterances) }}
+      ({% for r, n in built.role_counts.items() %}{{ n }} {{ r }}{% if not loop.last %}, {% endif %}{% endfor %})</td></tr>
+    <tr><td>Rows dropped</td><td>{{ built.dropped_speaker }} by speaker, {{ built.dropped_blank }} blank</td></tr>
+  </table>
+  {% if too_long %}
+  <p class="warn small">{{ too_long }} session(s) are longer than {{ max_len }}
+  utterances and will never be drawn for a round (one annotation call has to hold
+  the whole transcript).</p>
+  {% endif %}
+  <p class="muted small">Creating it writes the converted file and a checksum. The
+  app refuses to load it if it is ever edited afterwards, because your annotations
+  and judgements are tied to utterance positions in it.</p>
+  <button type="submit" name="create" value="1">Create dataset</button>
+</div>
+{% endif %}
+
+<p><button type="submit" class="ghost">Check the counts</button>
+<a class="btn ghost" href="{{ url_for('datasets.index') }}">Cancel</a></p>
+</form>
+{% endblock %}

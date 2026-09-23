@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="card">
+  <h1>Describe your construct</h1>
+  <p class="muted">Free-form. Paste notes, stream of consciousness, or an excerpt
+  from a paper. <strong>Define your labels in here too</strong> &mdash; the label
+  list below is just names.</p>
+
+  {% if problems %}
+  <div class="warn"><strong>Fix these first:</strong>
+    <ul>{% for p in problems %}<li>{{ p }}</li>{% endfor %}</ul>
+  </div>
+  {% endif %}
+
+  {% if warn_other %}
+  <div class="warn">
+    <strong>No catch-all label.</strong> Every utterance has to land somewhere, so
+    the label space usually needs an <code>Other</code> or <code>None</code>.
+    <form method="post" style="display:inline">
+      {% for k, v in form.items() %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+      <input type="hidden" name="labels" value="{{ form['labels'] }}, Other">
+      <input type="hidden" name="ack_other" value="1">
+      <button class="btn small" type="submit">Add “Other”</button>
+    </form>
+    <form method="post" style="display:inline">
+      {% for k, v in form.items() %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+      <input type="hidden" name="ack_other" value="1">
+      <button class="btn small ghost" type="submit">Continue without</button>
+    </form>
+  </div>
+  {% endif %}
+
+  <form method="post">
+    <label>Name</label>
+    <input name="name" required value="{{ form.name if form else '' }}" placeholder="Teacher talk moves">
+    <label>Description &amp; label definitions</label>
+    <textarea name="description" rows="14" required
+      placeholder="Describe the behaviour, and define what each label means…">{{ form.description if form else '' }}</textarea>
+    <label>Labels <span class="muted">(comma separated)</span></label>
+    <input name="labels" required value="{{ form.labels if form else '' }}"
+      placeholder="Revoicing, PressingForReasoning, Other">
+    <label>Dataset</label>
+    <select name="dataset">
+      {% for d in datasets %}
+      <option value="{{ d.id }}" {% if (form.dataset if form else 'talkmoves') == d.id %}selected{% endif %}>
+        {{ d.title }} — {{ d.sessions }} sessions{% if d.description %}, {{ d.description }}{% endif %}
+      </option>
+      {% endfor %}
+    </select>
+    <p class="muted small">Which transcripts this construct's rounds draw from.
+    <strong>Fixed once the construct is created</strong> &mdash; every round,
+    every cached annotation and every judgement is tied to it.</p>
+
+    <label>Scope</label>
+    <select name="scope">
+      {% for s in ['tutor','student','all'] %}
+      <option value="{{ s }}" {% if form and form.scope==s %}selected{% endif %}>{{ s }}</option>
+      {% endfor %}
+    </select>
+
+    <h3>Boundary rules</h3>
+    <p class="muted small">How the schema breaks a tie. Consulted only when the
+    evidence has already failed to settle an utterance &mdash; never to overrule
+    it. These are fixed at creation.</p>
+
+    <label>Catch-all label <span class="muted">(optional)</span></label>
+    <input name="other_label" value="{{ form.other_label if form else '' }}"
+           placeholder="Other">
+    <p class="muted small">Must be one of the labels above. Designating one turns
+    on both defaults: nothing fires &rarr; this label, and it never wins against a
+    real label. Leave blank and silence stays unresolved.</p>
+
+    <label>Precedence <span class="muted">(optional, one per line)</span></label>
+    <textarea name="rules" rows="3"
+      placeholder="PressingForReasoning &gt; PressingForAccuracy">{{ form.rules if form else '' }}</textarea>
+    <p class="muted small">Written <code>Winner &gt; Loser</code>, both from the
+    labels above. A loop is rejected: it would resolve by list order rather than
+    by anything meaningful.</p>
+
+    <button type="submit">Generate criteria &rarr;</button>
+    <p class="muted small">This calls the model once to seed a criterion set, then
+    annotates one session so you have real examples to approve against.</p>
+  </form>
+</div>
+{% endblock %}

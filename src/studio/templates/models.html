@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+{% block title %}Models — EduBehaviors Studio{% endblock %}
+{% block body %}
+<div class="row-between">
+  <h1>Models</h1>
+  {% if models_ready %}
+    <a class="btn" href="{{ next_url or url_for('home') }}">Done &rarr;</a>
+  {% endif %}
+</div>
+<p class="muted">The app needs three models: two <strong>annotators</strong>
+that independently mark every utterance in a transcript, and a
+<strong>reasoning</strong> model that proposes and revises your criteria. Each
+one must pass <strong>Test connection</strong> before the app will call it
+&mdash; a real, very cheap call with your key.</p>
+
+{% if busy %}
+<div class="warn">A round is annotating. Models can't be changed until it finishes.</div>
+{% endif %}
+
+{# ------------------------------------------------------------------ keys #}
+<h2 id="keys">1. API keys</h2>
+<div class="card">
+  <p class="muted small">Saved to <code class="mono">{{ data_dir }}/.env</code>
+  with owner-only permissions (chmod 600) &mdash; <strong>not</strong> in the
+  database, so you can share a database file without sharing your key. Paste an
+  empty value to remove a key.</p>
+  <table>
+    <tr><th>Provider</th><th>Key</th><th></th></tr>
+    {% for k in keys %}
+    <tr>
+      <td>{{ k.provider.title }}{% if k.used %} <span class="pill">in use</span>{% endif %}
+        {% if k.provider.key_url %}<br><a class="small" href="{{ k.provider.key_url }}" target="_blank" rel="noopener">get a key</a>{% endif %}
+        {% if k.provider.key_optional %}<br><span class="muted small">optional</span>{% endif %}</td>
+      <td class="mono">{{ k.shown or '—' }}</td>
+      <td>
+        <form method="post" action="{{ url_for('setup.save_key', provider=k.provider.id) }}" class="inline">
+          <input type="password" name="key" autocomplete="off" placeholder="paste key" style="width:18rem">
+          <button class="small" type="submit">Save</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+    <tr>
+      <td>{{ providers['vertex'].title }}</td>
+      <td colspan="2" class="muted small">No key: uses your Google Cloud
+        application-default credentials. Run <code>gcloud auth application-default login</code>
+        first.</td>
+    </tr>
+  </table>
+</div>
+
+{# ----------------------------------------------------------------- roles #}
+<h2 id="roles">2. Roles</h2>
+{% if same_model %}
+<div class="warn small">
+  <strong>Both annotators use the same model.</strong> That works &mdash; the
+  second is an independent sample, not a copy &mdash; but their agreement (&alpha;)
+  then measures how consistently one model answers, <em>not</em> whether two
+  different models agree. Disagreement between different model families is the
+  stronger signal for finding weak criteria; use two if you have access to two.
+</div>
+{% endif %}
+
+<div class="setupgrid">
+{% for r in roles %}
+  <div class="card" id="{{ r.role }}">
+    <h3>{{ r.title }}
+      {% if r.verified %}<span class="status-ok">&#10003; verified</span>
+      {% else %}<span class="status-no">not verified</span>{% endif %}</h3>
+    <p class="muted small">
+      {% if r.role == 'reasoning' %}Seeds criteria from your description and proposes
+      revisions. A few calls per round, so a stronger model costs little.
+      {% else %}Called once per criterion per session &mdash; most of the bill.{% endif %}
+    </p>
+    <form method="post" action="{{ url_for('setup.save_role', role=r.role) }}" class="roleform">
+      <label>Provider</label>
+      <select name="provider" class="providerpick">
+        {% for p in providers.values() %}
+        <option value="{{ p.id }}" {% if r.spec.provider == p.id %}selected{% endif %}>{{ p.title }}</option>
+        {% endfor %}
+      </select>
+
+      <label>Model id</label>
+      <input name="model" required value="{{ r.spec.model or '' }}" list="suggest-{{ r.role }}"
+             class="mono" placeholder="e.g. claude-haiku-4-5">
+      <datalist id="suggest-{{ r.role }}">
+        {% for pid, rows in suggested.items() %}{% for mid, title, pin, pout in rows %}
+        <option data-provider="{{ pid }}" value="{{ mid }}">{{ title }}{% if pin is not none %} — ${{ pin }}/${{ pout }} per M{% endif %}</option>
+        {% endfor %}{% endfor %}
+      </datalist>
+
+      <div class="dep" data-for="openai_compatible">
+        <label>Base URL</label>
+        <input name="base_url" value="{{ r.spec.base_url or '' }}" class="mono"
+               placeholder="http://localhost:11434/v1">
+        <p class="muted small">Ollama <code>http://localhost:11434/v1</code>,
+        LM Studio <code>http://localhost:1234/v1</code>, OpenRouter
+        <code>https://openrouter.ai/api/v1</code>.</p>
+      </div>
+      <div class="dep" data-for="vertex">
+        <div class="fieldrow">
+          <div><label>GCP project</label>
+            <input name="project" value="{{ r.spec.project or '' }}" class="mono"></div>
+          <div><label>Region</label>
+            <input name="region" value="{{ r.spec.region or 'global' }}" class="mono"></div>
+        </div>
+      </div>
+
+      <label>Reasoning</label>
+      <select name="reasoning" class="reasoningpick">
+        {% for p in providers.values() %}{% for opt in p.reasoning %}
+        <option value="{{ opt }}" data-provider="{{ p.id }}"
+          {% if r.spec.provider == p.id and (r.spec.reasoning or 'default') == opt %}selected{% endif %}>{{ opt }}</option>
+        {% endfor %}{% endfor %}
+      </select>
+      {% for p in providers.values() %}
+      <p class="muted small dep" data-for="{{ p.id }}">{{ p.reasoning_note }}</p>
+      {% endfor %}
+      {% if r.role != 'reasoning' %}
+      <p class="muted small">Changing reasoning changes answers, so it counts as a
+      different annotator: sessions annotated under the old setting are not reused.</p>
+      {% endif %}
+
+      <label>Price, USD per million tokens <span class="muted">(input / output)</span></label>
+      <div class="fieldrow">
+        <input name="price_in" inputmode="decimal" value="{{ r.spec.price_in if r.spec.price_in is not none else '' }}"
+               placeholder="{{ r.price[0] if r.price else 'unknown' }}">
+        <input name="price_out" inputmode="decimal" value="{{ r.spec.price_out if r.spec.price_out is not none else '' }}"
+               placeholder="{{ r.price[1] if r.price else 'unknown' }}">
+      </div>
+      <p class="muted small">
+        {% if r.price %}Using ${{ r.price[0] }} / ${{ r.price[1] }}{% if r.spec.price_in is none %} (list price; check your provider's current rate){% endif %}.
+        {% else %}<strong>Unknown</strong> &mdash; enter it, or spend is shown as unknown rather than $0.{% endif %}
+        Reasoning is billed as output.
+      </p>
+
+      <div class="inlineactions">
+        <button type="submit" name="then_test" value="1" {% if busy %}disabled{% endif %}>Save &amp; test</button>
+        <button type="submit" class="ghost" {% if busy %}disabled{% endif %}>Save</button>
+      </div>
+    </form>
+    <form method="post" action="{{ url_for('setup.test_role', role=r.role) }}" style="margin-top:.5rem">
+      <button class="small ghost" type="submit">Test connection</button>
+      <span class="muted small mono">{{ r.nick }}</span>
+    </form>
+    {% if r.last %}
+      <p class="{{ 'status-ok' if r.last[0] else 'status-no' }} small">
+        {{ 'Connected.' if r.last[0] else 'Failed — the provider said:' }}</p>
+      <div class="testout mono">{{ r.last[1] }}</div>
+    {% endif %}
+  </div>
+{% endfor %}
+</div>
+
+{# ----------------------------------------------------------------- spend #}
+<h2 id="spend">3. Spending</h2>
+<div class="card">
+  <table class="kv">
+    <tr><td>This server session</td><td>~${{ '%.2f'|format(session) }}</td></tr>
+    <tr><td>All time, this data directory</td><td>~${{ '%.2f'|format(lifetime) }}</td></tr>
+    <tr><td>Cap</td><td>${{ '%.2f'|format(cap) }}
+      {% if lifetime >= cap %}<span class="status-no">&mdash; reached; nothing more will run</span>{% endif %}</td></tr>
+  </table>
+  {% if unpriced %}
+  <p class="warn small">{{ unpriced }} call(s) were made to a model with no known
+  price and are not in these totals.</p>
+  {% endif %}
+  <p class="muted small">Estimates: token counts as reported by the provider,
+  times the prices above. Retries count; calls that failed before reporting usage
+  do not. Check your provider's billing page for the real figure.</p>
+  <form method="post" action="{{ url_for('setup.save_cap') }}" class="inline">
+    <label>Refuse to start anything once all-time spend would pass $</label>
+    <input name="cap" inputmode="decimal" value="{{ '%.2f'|format(cap) }}" style="width:7rem">
+    <button class="small" type="submit">Set cap</button>
+  </form>
+</div>
+
+<script>
+// Show only the fields and reasoning options that apply to each role's
+// provider. Plain JS: the page must work without anything else loaded.
+document.querySelectorAll('.roleform').forEach(function (form) {
+  var pick = form.querySelector('.providerpick');
+  var reasoning = form.querySelector('.reasoningpick');
+  function sync() {
+    var p = pick.value;
+    form.querySelectorAll('.dep').forEach(function (el) {
+      el.style.display = el.dataset.for === p ? '' : 'none';
+    });
+    var firstVisible = null, selectedVisible = false;
+    Array.from(reasoning.options).forEach(function (o) {
+      var show = o.dataset.provider === p;
+      o.hidden = !show; o.disabled = !show;
+      if (show && !firstVisible) firstVisible = o;
+      if (show && o.selected) selectedVisible = true;
+    });
+    if (!selectedVisible && firstVisible) firstVisible.selected = true;
+  }
+  pick.addEventListener('change', sync);
+  sync();
+});
+</script>
+{% endblock %}

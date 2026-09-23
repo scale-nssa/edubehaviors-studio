@@ -1,0 +1,46 @@
+{# Inline editor for one criterion, swapped in place of its display row.
+
+   It replaces a jump to Revise. Editing wording is the commonest thing you do
+   from the schema table and it was costing a page load, a scroll to an anchor,
+   and a trip back.
+
+   Save re-renders the WHOLE table rather than this row, because the row unit
+   is a (label, criterion) pair: a criterion with two edges appears twice, and
+   changing its edges moves it between label groups. Swapping one row would
+   leave the others stale and the grouping wrong. #}
+<tr class="editrow">
+  <td colspan="5">
+    {% if problems %}
+    <div class="warn small">{{ problems|join('; ') }}</div>
+    {% endif %}
+
+    <textarea name="text" rows="2" class="inlinetext"
+      autofocus>{{ text }}</textarea>
+
+    <div class="inlineedges">
+      <span class="muted small">evidence for</span>
+      {% for lbl in labels %}
+      <label class="radio"><input type="checkbox" name="edge_{{ lbl }}"
+        {% if lbl in wired %}checked{% endif %}> {{ lbl }}</label>
+      {% endfor %}
+    </div>
+
+    <div class="inlineactions">
+      <button type="button" class="btn small"
+        hx-post="{{ url_for('criterion_edit', cid=cid, crit_id=crit_id) }}"
+        hx-include="closest tr" hx-target="#schematable" hx-swap="outerHTML">save</button>
+      <button type="button" class="btn small ghost"
+        hx-get="{{ url_for('schema_table', cid=cid) }}"
+        hx-target="#schematable" hx-swap="outerHTML">cancel</button>
+      {# Excludes rather than destroys: the row stays in the table with
+         status='excluded', out of the active schema but still in every
+         snapshot, so History can bring it back. hx-confirm because this is
+         the one button here that is not trivially undone in place. #}
+      <button type="button" class="btn small danger"
+        hx-post="{{ url_for('criterion_edit', cid=cid, crit_id=crit_id) }}"
+        hx-vals='{"action": "exclude"}'
+        hx-confirm="Delete this criterion? It drops out of the schema; you can restore it from schema history."
+        hx-target="#schematable" hx-swap="outerHTML">delete</button>
+    </div>
+  </td>
+</tr>

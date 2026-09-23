@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="revisegrid">
+<div class="card scrollcol">
+  <h3>Current schema</h3>
+  <p class="muted small">Click a criterion to jump to its editor.</p>
+  {% with actions=False, jump=True, cid=c['id'] %}
+    {% include "_schema.html" %}
+  {% endwith %}
+</div>
+
+<div class="card scrollcol">
+  <h1>Revise</h1>
+
+  {# Your hands first. The model's suggestions are further down, behind a
+     button: arriving here to find the schema already rewritten for you puts
+     the machine's guesses ahead of your own reading of the round. #}
+  <h3 id="editors">Edit the schema</h3>
+  <p class="muted small">You just read ten utterances. This is where what you
+  learned goes &mdash; sharpen a criterion&rsquo;s wording, move an edge, add the
+  behaviour nothing covered. Every change here cuts a new schema version, so it
+  can be rolled back.</p>
+
+  <details class="editor" open>
+    <summary>Criteria ({{ criteria|length }})</summary>
+    {% for cr in criteria %}
+    <form method="post" action="{{ url_for('criterion_edit', cid=c['id'], crit_id=cr.id) }}"
+          class="critedit" id="crit-{{ cr.id }}">
+      <div class="critnum mono muted">#{{ cr.id }}</div>
+      <textarea name="text" rows="2">{{ cr.text }}</textarea>
+      <div class="edgerow">
+        {% for lbl in labels %}
+        <label class="edgepick">
+          <input type="checkbox" name="edge_{{ lbl }}"
+            {% if lbl in edgemap.get(cr.id, []) %}checked{% endif %}> {{ lbl }}
+        </label>
+        {% endfor %}
+      </div>
+      <button class="small" type="submit" name="action" value="save">Save</button>
+      <button class="small ghost" type="submit" name="action" value="exclude">Remove</button>
+    </form>
+    {% endfor %}
+  </details>
+
+  <details class="editor">
+    <summary>Add a criterion</summary>
+    <form method="post" action="{{ url_for('criterion_new', cid=c['id']) }}" class="critedit">
+      <textarea name="text" rows="2" placeholder="Does the tutor…"></textarea>
+      <div class="edgerow">
+        {% for lbl in labels %}
+        <label class="edgepick">
+          <input type="checkbox" name="edge_{{ lbl }}"> {{ lbl }}
+        </label>
+        {% endfor %}
+      </div>
+      <button class="small" type="submit">Add</button>
+    </form>
+  </details>
+
+  <details class="editor">
+    <summary>Description</summary>
+    <form method="post" action="{{ url_for('edit_description', cid=c['id']) }}">
+      <textarea name="description" rows="12">{{ c['description'] }}</textarea>
+      <button class="small" type="submit">Save description</button>
+    </form>
+  </details>
+
+  <h3 id="assist">Ask for suggestions <span class="muted small">optional</span></h3>
+  <p class="muted small">Nothing below runs unless you ask for it.</p>
+
+  {% if job.status == 'running' %}
+    <div class="bar" id="progbar"><div class="fill indet"></div></div>
+    <div hx-get="{{ url_for('revise_progress', cid=c['id']) }}"
+         hx-trigger="load, every 1500ms" hx-swap="outerHTML">
+      <p class="muted">thinking&hellip;</p>
+    </div>
+  {% else %}
+    {% if job.status == 'failed' %}<div class="warn">Last attempt failed: {{ job.error }}</div>{% endif %}
+    <div class="row">
+      <form method="post" action="{{ url_for('revise_ask', cid=c['id']) }}">
+        <button class="ghost" type="submit">Ask me questions first</button>
+      </form>
+      <form method="post" action="{{ url_for('revise_propose', cid=c['id']) }}">
+        <button class="ghost" type="submit">Propose changes</button>
+      </form>
+    </div>
+  {% endif %}
+
+  {% if questions %}
+  <h4 id="questions">Questions</h4>
+  {% for q in questions %}
+  <div class="q">
+    <p>{{ q['text'] }}</p>
+    <form method="post" action="{{ url_for('revise_answer', cid=c['id'], qid=q['id']) }}">
+      <input name="answer" value="{{ q['answer'] }}"
+             placeholder="Answer, or leave blank to skip">
+      <button class="small" type="submit">{{ 'Update' if q['answer'] else 'Answer' }}</button>
+    </form>
+  </div>
+  {% endfor %}
+  {% endif %}
+
+  <h4 id="deltas">Staged changes</h4>
+  <p class="muted small">Whatever the model proposed when you last asked.
+  Nothing is staged automatically.</p>
+  {% if not deltas %}<p class="muted">None staged.</p>{% endif %}
+  {% for d, v, dwarn in deltas %}
+  <div class="delta">
+    <div class="row-between">
+      <strong><span class="kind {{ v.kind_label[:4] }}">{{ v.kind_label }}</span>
+        {{ v.title }}</strong>
+      <span>
+        <form method="post" action="{{ url_for('delta_action', cid=c['id'], did=d['id'], action='apply') }}" style="display:inline">
+          <button class="small" type="submit">Apply</button></form>
+        <form method="post" action="{{ url_for('delta_action', cid=c['id'], did=d['id'], action='reject') }}" style="display:inline">
+          <button class="small ghost" type="submit">Reject</button></form>
+      </span>
+    </div>
+
+    {% if v.before %}<div class="diff old">{{ v.before }}</div>{% endif %}
+    {% if v.after %}<div class="diff new">{{ v.after }}</div>{% endif %}
+    {% if v.before_edges or v.after_edges %}
+    <div class="edgediff">
+      {% if v.before_edges %}<div class="diff old">
+        {% for e in v.before_edges %}<div>{{ e }}</div>{% endfor %}</div>{% endif %}
+      {% if v.after_edges %}<div class="diff new">
+        {% for e in v.after_edges %}<div>{{ e }}</div>{% endfor %}</div>{% endif %}
+    </div>
+    {% endif %}
+
+    {% if v.metrics %}
+    <div class="mchips" title="Measured by re-running the schema over cached annotations, no model call.
+gold: change in judged utterances routed to exactly your label.
+one-label: change in utterances across the whole session resolving to exactly one label.">
+      {% if v.metrics.gold %}<span class="mchip good">gold {{ '%+d'|format(v.metrics.gold) }}</span>{% endif %}
+      <span class="mchip">one-label {{ '%+d'|format(v.metrics.welldef) }}</span>
+      {% if not v.metrics.gold_backed %}<span class="mchip warnchip">consistency only &mdash; not evidence of correctness</span>{% endif %}
+      <span class="info">i</span>
+    </div>
+    {% endif %}
+    {% for w in dwarn %}<div class="warn small">{{ w }}</div>{% endfor %}
+    {% if d['rationale'] %}<p class="muted small rationale">{{ d['rationale'] }}</p>{% endif %}
+  </div>
+  {% endfor %}
+
+  <h4 id="scratchpad">Agent&rsquo;s working note</h4>
+  <p class="muted small">What the revise agent currently thinks is still wrong.
+  It is rewritten each time changes are proposed and fed back in next round &mdash;
+  correct it if its theory is off.</p>
+  <form method="post" action="{{ url_for('edit_scratchpad', cid=c['id']) }}">
+    <textarea name="scratchpad" rows="6"
+      placeholder="(empty until changes have been proposed once)">{{ c['scratchpad'] }}</textarea>
+    <button class="small ghost" type="submit">Save note</button>
+  </form>
+
+  <p><a class="btn" href="{{ url_for('construct_home', cid=c['id']) }}">Done revising</a></p>
+</div>
+</div>
+{% endblock %}

@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="card">
+  <h1>Deriving criteria</h1>
+  <p class="muted">Reading your description and proposing a first set of yes/no
+  criteria over utterances. This is one reasoning call and can take a minute or two.</p>
+
+  {# The bar sits OUTSIDE the polled fragment. HTMX replaces the fragment every
+     1.5s, and replacing a node restarts its CSS animation — which made the
+     sweep jump back to frame 0 mid-stride. Only the status text swaps now. #}
+  <div class="bar" id="progbar"><div class="fill indet"></div></div>
+
+  <div hx-get="{{ url_for('seed_progress', cid=c['id']) }}"
+       hx-trigger="load, every 1500ms" hx-swap="outerHTML">
+    <p class="muted">working…</p>
+  </div>
+</div>
+{% endblock %}

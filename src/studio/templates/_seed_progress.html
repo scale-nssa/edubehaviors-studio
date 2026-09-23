@@ -1,0 +1,19 @@
+{% if p.status != 'running' %}
+  {# Out-of-band: retire the animated bar once there is nothing to wait for. #}
+  <div class="bar done" id="progbar" hx-swap-oob="true"></div>
+{% endif %}
+<div data-status="{{ p.status }}"
+     {% if p.status == 'running' %}hx-get="{{ request.path }}" hx-trigger="every 1500ms" hx-swap="outerHTML"{% endif %}>
+  {% if p.status == 'running' %}
+    <p class="muted">working…</p>
+  {% elif p.status == 'failed' %}
+    <p class="bad">Failed: {{ p.error }}</p>
+    {% if p.retry_url %}
+    <form method="post" action="{{ p.retry_url }}"><button type="submit">Try again</button></form>
+    {% endif %}
+  {% else %}
+    {% if p.n is defined %}<p class="muted">{{ p.n }} criteria proposed.</p>{% endif %}
+    <p><a class="btn" href="{{ p.next_url }}">Continue &rarr;</a></p>
+    <script>window.location = {{ p.next_url|tojson }};</script>
+  {% endif %}
+</div>

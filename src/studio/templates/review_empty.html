@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="card">
+  <h1>Nothing selected</h1>
+  <p class="muted">The round annotated session <code>{{ rnd['session_id'] }}</code>
+  but selection returned no utterances. Usually that means no criteria are active.</p>
+  <a class="btn" href="{{ url_for('construct_home', cid=c['id']) }}">Back</a>
+</div>
+{% endblock %}

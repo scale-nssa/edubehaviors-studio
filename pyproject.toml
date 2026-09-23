@@ -1,0 +1,41 @@
+[project]
+name = "edubehaviors-studio"
+version = "0.2.0"
+description = "Turn a text description of a construct into an itemized annotation schema over tutoring transcripts"
+readme = "README.md"
+requires-python = ">=3.12"
+# The model layer is `studio.providers`, a thin shim over the official SDKs.
+# It replaced a path dependency on a sibling repo (`../inference`) that nobody
+# cloning this repo alone could satisfy.
+dependencies = [
+    "anthropic[vertex]>=1.3.0",
+    "flask>=3.0.0",
+    "google-genai>=1.0.0",
+    "krippendorff>=0.8.0",
+    "numpy>=1.26.0",
+    "openai>=1.60.0",
+    "platformdirs>=4.0.0",
+    "scikit-learn>=1.5.0",
+]
+
+[project.scripts]
+studio = "studio.__main__:main"
+edubehaviors-studio = "studio.__main__:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/studio"]
+
+[tool.hatch.build.targets.sdist]
+# Only what the wheel needs plus the docs a reader wants. In particular no
+# `newdata/` or other corpora: TalkMoves is the only dataset this branch may
+# redistribute (docs/local-mode-plan.md §6.1).
+include = ["src/studio", "README.md", "LICENSE*", "pyproject.toml", "tests"]

@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="card narrow">
+  <h1>EduBehaviors Studio</h1>
+  <p class="muted">Turn a description of a behaviour into an itemized annotation
+  schema over tutoring transcripts.</p>
+  <form method="post" action="{{ url_for('identify') }}">
+    <label>Your name</label>
+    <input name="name" autofocus required placeholder="e.g. Jordan">
+    <button type="submit">Start</button>
+  </form>
+</div>
+{% endblock %}

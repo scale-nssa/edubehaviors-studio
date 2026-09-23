@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="row-between">
+  <h1>{{ c['name'] }}</h1>
+  <span>
+    <details class="exportmenu">
+      <summary class="btn ghost">export</summary>
+      <div class="menu">
+        <p class="muted small">Firing matrix + assertion key, two CSVs in a zip, over
+        every session this construct has annotated. Reads the cache &mdash; no model calls.</p>
+        <form method="get" action="{{ url_for('export_bundle', cid=c['id']) }}">
+          <label class="inlinelabel">Annotations from
+            <select name="models">
+              <option value="both">both models</option>
+              {% for m in export_models %}
+              <option value="{{ m }}">{{ m.removeprefix('openrouter_') }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <button class="small" type="submit">Download .zip</button>
+        </form>
+      </div>
+    </details>
+    {# `rounds` is one row per session, newest first, and already review-only
+       — it used to be one row per round with a `kind`, and filtering on a key
+       that no longer exists silently emptied this and showed "Start first
+       round" on a construct with fourteen rounds behind it. #}
+    {% set latest = rounds|first %}
+    {% if latest %}
+      <form method="post" action="{{ url_for('revisit_round', cid=c['id'], rid=latest['last_round']) }}" style="display:inline">
+        <button type="submit" title="Re-annotate the session you are working under the current schema.">
+          Continue in this session</button></form>
+      <form method="post" action="{{ url_for('new_round', cid=c['id']) }}" style="display:inline">
+        <button class="ghost" type="submit" {% if not sessions_remaining %}disabled
+          title="Every session in this dataset has been annotated."
+          {% else %}title="Move to a session you have not seen yet."{% endif %}>
+          Add a session</button></form>
+    {% else %}
+      <form method="post" action="{{ url_for('new_round', cid=c['id']) }}" style="display:inline">
+        <button type="submit">Start first round</button></form>
+    {% endif %}
+  </span>
+</div>
+{% if not sessions_remaining and sessions_total %}
+<div class="warn small">You have annotated all {{ sessions_total }} sessions in
+this dataset. There is no new session to draw &mdash; re-run one you have
+already seen from the rounds table below, or start a construct on another
+dataset.</div>
+{% endif %}
+<p class="muted">{{ dataset_title }} &middot; scope {{ c['scope'] }} &middot;
+{{ sessions_remaining }} of {{ sessions_total }} sessions unused &middot; schema v{{ c['version'] }} &middot;
+labels: {% for l in labels %}<span class="pill">{{ l }}</span>{% endfor %}</p>
+
+<div class="cols">
+  <div>
+    {# The "Boundary rules" preamble and the two catch-all defaults were
+       removed: they restated what was already chosen on Describe, identically
+       on every construct, at the top of the page you land on after Approve.
+       The explicit precedence table below still carries the heading, and only
+       appears when there is actually a rule to show. #}
+    {% if rules %}
+    <h3 id="rules">Boundary rules</h3>
+    <p class="muted small">Consulted only when the evidence has already failed
+    to settle an utterance &mdash; never to overrule it.</p>
+    <table>
+      <tr><th>rule</th><th>decides</th><th>note</th></tr>
+      {% for r in rules %}
+      {% set load = (rule_load | selectattr('winner','equalto',r['winner'])
+                                | selectattr('loser','equalto',r['loser']) | list | first) %}
+      <tr>
+        <td><span class="pill">{{ r['winner'] }}</span> beats
+            <span class="pill">{{ r['loser'] }}</span></td>
+        <td class="num {{ 'bad' if load and load.share > 0.25 }}">
+          {% if load %}{{ load.decides }}
+            <span class="muted small">({{ '%.0f'|format(100 * load.share) }}%)</span>
+          {% else %}&mdash;{% endif %}</td>
+        <td class="muted small">{{ r['note'] }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    <p class="muted small">A rule carrying a large share of a session is not
+    resolving a boundary, it is masking two criteria that overlap.</p>
+    {% endif %}
+
+    <h3>Schema</h3>
+    {% with actions=True, cid=c['id'] %}
+      {% include "_schema.html" %}
+    {% endwith %}
+
+    <h3>Sessions</h3>
+    <table>
+      <tr><th>session</th><th class="num">rounds</th><th class="num">judged</th>
+        <th></th></tr>
+      {% for r in rounds %}
+      <tr>
+        <td>{{ r['session_id'] }}</td>
+        <td class="num muted">{{ r['n_rounds'] }}</td>
+        <td class="num muted">{{ r['judged'] }}</td>
+        {# One action per session, and only forward: whatever is unfinished on
+           it, else continue it. A per-round list offered the same transcript
+           several times over and made starting work on a superseded round
+           look like a normal thing to do. #}
+        <td class="nowrap">
+          {% if r['annotating_id'] %}
+            <a href="{{ url_for('annotating', cid=c['id'], rid=r['annotating_id']) }}">annotating&hellip;</a>
+          {% elif r['reviewing_id'] %}
+            <a href="{{ url_for('review', cid=c['id'], rid=r['reviewing_id']) }}">review</a>
+          {% else %}
+            <form method="post" action="{{ url_for('revisit_round', cid=c['id'], rid=r['last_round']) }}">
+              <button class="small ghost" type="submit"
+                title="Draw another batch from this session under the current schema. Unchanged criteria are cached, so you only pay for what you changed.">continue</button>
+            </form>
+          {% endif %}
+          {% if r['error'] %}<span class="bad small">{{ r['error'] }}</span>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+
+  <div>
+    <h3>Metrics</h3>
+    {% if not summary %}<p class="muted">No completed reviews yet.</p>{% endif %}
+    {% for s in summary %}
+    <div class="metric">
+      <div class="row-between"><strong>Round {{ s.round }}</strong>
+        <span class="muted small">{{ s.reviewed }} reviewed</span></div>
+      {# Counts, then the two agreement figures. The sample size rides in
+         parentheses because the two alphas are measured over different
+         populations — cross-model over every in-scope utterance of the
+         session, model-human only over the ones you gave a verdict. Reading
+         them side by side without that is how "-0.14" gets compared against
+         "0.29" as if they were the same measurement. #}
+      <table class="kv">
+        <tr><td>{{ c['scope'] }} utterances annotated</td><td>{{ s.n_utterances }}</td></tr>
+        <tr><td>utterances judged by you</td><td>{{ s.n_judged }}</td></tr>
+        {# A rate now, not a count: "accuracy: 7" would read as nonsense. The
+           denominator is the row directly above. #}
+        <tr><td>accuracy</td>
+            <td>{% if s.n_judged %}{{ (100 * s.n_exact / s.n_judged)|round|int }}%
+              {% else %}&mdash;{% endif %}
+              <span class="muted">({{ s.n_judged }})</span></td></tr>
+        <tr><td>total assertions</td><td>{{ s.n_criteria }}</td></tr>
+        <tr><td>&alpha; cross-model</td>
+            <td>{{ '%.2f'|format(s.model_alpha.macro) if s.model_alpha.macro is not none else '&mdash;'|safe }}
+              <span class="muted">({{ s.n_model_alpha }})</span></td></tr>
+        {# In place of alpha model-human. That alpha is a rescaled version of
+           this count with a chance correction on top, over the same verdicts
+           — and on sparse data the correction swings it wildly while the
+           count stays legible. Assertion-level: one utterance carries a
+           verdict on every criterion, so 10 judged utterances produce 60
+           comparisons here. #}
+        <tr><td>total assertion disagreements</td>
+            <td>{{ s.n_disagreements }}
+              <span class="muted">({{ s.n_verdicts }})</span></td></tr>
+      </table>
+    </div>
+    {% endfor %}
+
+    <div class="row-between">
+      <h3>Schema history</h3>
+      <a class="small" href="{{ url_for('history', cid=c['id']) }}">all versions &rarr;</a>
+    </div>
+    <table>
+      {% for v in versions[:6] %}
+      <tr><td>v{{ v['version'] }}</td><td class="muted small">{{ v['note'] }}</td></tr>
+      {% endfor %}
+    </table>
+  </div>
+</div>
+{% endblock %}

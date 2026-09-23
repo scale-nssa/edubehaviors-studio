@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="row-between">
+  <h1>Your constructs</h1>
+  <span>
+    {% if last_cid and resume.get(last_cid) %}
+      <a class="btn" href="{{ resume[last_cid][0] }}">Resume where you left off &rarr;</a>
+    {% endif %}
+    <a class="btn {% if last_cid %}ghost{% endif %}" href="{{ url_for('new_construct') }}">New construct</a>
+  </span>
+</div>
+{% if not constructs %}
+  <p class="muted">Nothing yet. Create a construct to begin.</p>
+{% else %}
+<table>
+  <tr><th>Name</th><th>Where you are</th><th>Dataset</th><th>Labels</th><th>Scope</th><th>v</th><th>Rounds</th></tr>
+  {% for c in constructs %}
+  <tr>
+    <td><a href="{{ resume[c['id']][0] }}">{{ c['name'] }}</a></td>
+    <td><a class="resume" href="{{ resume[c['id']][0] }}">{{ resume[c['id']][1] }} &rarr;</a></td>
+    <td class="muted small">{{ c['dataset'] }}</td>
+    <td class="muted">{{ (c['label_space']|from_json)|join(', ') }}</td>
+    <td>{{ c['scope'] }}</td>
+    <td>{{ c['version'] }}</td>
+    <td>{{ c['rounds'] }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% endif %}
+{% endblock %}

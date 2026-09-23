@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="card">
+  <div class="row-between">
+    <h1>Session <span class="muted">{{ s.session_id }}</span></h1>
+    <span class="muted small">{{ s.n_criteria }} criteria &middot; schema v{{ c['version'] }}</span>
+  </div>
+
+  <div class="row topactions">
+    {% if s.round['status'] == 'reviewing' and s.reviewed < s.queued %}
+    <a class="btn" href="{{ url_for('review', cid=c['id'], rid=s.round['id']) }}">
+      Back to the round ({{ s.reviewed }}/{{ s.queued }}) &rarr;</a>
+    {% endif %}
+    <form method="post" action="{{ url_for('end_round', cid=c['id'], rid=s.round['id']) }}">
+      <button type="submit" {% if not s.reviewed %}class="ghost"{% endif %}>End round &amp; revise</button></form>
+    <form method="post" action="{{ url_for('revisit_round', cid=c['id'], rid=s.round['id']) }}">
+      <button class="ghost" type="submit"
+        title="Re-annotate this same session under the current schema. Cached criteria are free.">
+        Continue in this session</button></form>
+    <form method="post" action="{{ url_for('new_round', cid=c['id']) }}">
+      <button class="ghost" type="submit" {% if not s.remaining %}disabled
+        title="Every session in this dataset has been annotated."
+        {% else %}title="Move to a session you have not seen. Costs a full annotation pass."{% endif %}>
+        Add a new session</button></form>
+    {% if not s.remaining %}<span class="muted small">all
+      {{ s.dataset_total }} sessions annotated</span>{% endif %}
+    <span class="muted small">{{ s.reviewed }} judged this round</span>
+  </div>
+
+  {% include "_scoreboard.html" %}
+
+  {% include "_metrics.html" %}
+
+  <div class="cols">
+    <div>
+      <h3>{% if s.positive_label %}Predicted {{ s.positive_label }}{% else %}Predicted labels{% endif %}</h3>
+      {% if s.positive_label %}
+      <p class="positivecount">
+        <b>{{ s.per_label.get(s.positive_label, 0) }}</b>
+        <span class="muted">of {{ s.n_in_scope }} {{ s.scope }} utterances predicted
+        <strong>{{ s.positive_label }}</strong></span>
+      </p>
+      <p class="muted small">Two labels with a catch-all, so the schema is
+      answering one question: does this behaviour occur? Everything not
+      predicted {{ s.positive_label }} is a negative call, not a gap.</p>
+      {% endif %}
+      <table>
+        {% for lbl, n in s.per_label.items() %}
+        <tr>
+          <td>{{ lbl }}</td>
+          <td class="num">{{ n }}</td>
+          <td class="barcell"><span class="minibar"
+            style="width:{{ (100 * n / s.n_in_scope)|round(1) }}%"></span></td>
+        </tr>
+        {% endfor %}
+      </table>
+      <p class="muted small">Counts sum above the utterance total when the schema
+      is over-labelled &mdash; an utterance with two candidates is counted twice.</p>
+    </div>
+
+    <div>
+      <h3>This round&rsquo;s batch</h3>
+      <table>
+        <tr><th>picked for</th><th class="num">n</th></tr>
+        {% for t in tiers %}
+        <tr><td>{{ t['tier'] }}</td><td class="num">{{ t['n'] }}</td></tr>
+        {% endfor %}
+      </table>
+      {# Two different ladders. The general one ranks by how badly the schema
+         failed; the binary one leads with the positive class, because on a
+         two-label construct a cleanly resolved positive is the thing you most
+         need to check and the general ladder buries it last. #}
+      {% if s.binary_round %}
+      <p class="muted small">{{ s.queued }} utterances this round (up to ten),
+      chosen down the binary ladder: utterances the schema calls
+      <strong>{{ s.positive_label }}</strong> first &mdash; both models, then
+      one &mdash; next those where <strong>{{ s.positive_label }}</strong> and
+      <strong>{{ s.catch_all }}</strong> evidence collide, and last the plain
+      <strong>{{ s.catch_all }}</strong>. Work the batch, end the round,
+      revise.</p>
+      {% else %}
+      <p class="muted small">{{ s.queued }} utterances this round (up to ten),
+      chosen down the selection ladder: competing labels first, then silence,
+      then the catch-all, then the merely fragile. Work the batch, end the
+      round, revise.</p>
+      {% endif %}
+
+      {% if s.edits_on_this_session %}
+      <div class="warn small">
+        <strong>{{ s.edits_on_this_session }} schema change(s)</strong> made while
+        working this session. The numbers above improve partly because you are
+        tuning to this one transcript &mdash; worth adding a fresh session before
+        trusting them.
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <p class="muted small">Continuing in this session picks another ten under the
+  current schema.</p>
+</div>
+{% endblock %}

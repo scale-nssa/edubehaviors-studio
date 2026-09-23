@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="card narrow">
+  <h1>That name is taken</h1>
+  <p>Someone is already working as <strong>{{ name }}</strong>
+    {% if n_constructs %}&mdash; {{ n_constructs }} construct{{ '' if n_constructs == 1 else 's' }}{% endif %}
+    {% if seen_s is not none %}, active
+      {% if seen_s < 60 %}moments ago{% elif seen_s < 3600 %}{{ (seen_s // 60)|int }} minutes ago
+      {% else %}{{ (seen_s // 3600)|int }} hours ago{% endif %}{% endif %}.
+  </p>
+  <p class="muted small">There are no passwords here, so we cannot tell you apart.
+  If that is you on another browser, carry on. If it is someone else, pick a
+  different name &mdash; otherwise you will both be editing the same constructs.</p>
+
+  <form method="post" action="{{ url_for('identify') }}">
+    <input type="hidden" name="name" value="{{ name }}">
+    <input type="hidden" name="confirm_existing" value="1">
+    <button type="submit">Yes, that&rsquo;s me &mdash; resume my work</button>
+  </form>
+
+  <form method="post" action="{{ url_for('identify') }}">
+    <label>Use a different name</label>
+    <input name="name" value="{{ suggestion }}" autofocus required>
+    <button class="ghost" type="submit">Continue as this instead</button>
+  </form>
+</div>
+{% endblock %}

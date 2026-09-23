@@ -1,0 +1,71 @@
+{# Shared schema table. Reads service.build_schema_view.
+   The id is the HTMX swap target for inline editing — see
+   _criterion_edit_row.html for why the whole table is replaced. #}
+<div class="schema" id="schematable">
+  {% for g in view.labels %}
+  <div class="labelgroup">
+    <div class="row-between">
+      <h4>{{ g.label }} <span class="muted small">{{ g.rows|length }}</span></h4>
+      {% if g.warning %}<span class="flag">{{ g.warning }}</span>{% endif %}
+    </div>
+    {% if g.rows %}
+    <table class="schematable">
+      <tr>
+        <th>criterion</th>
+        <th><span class="tip" data-tip="Percentage of in-scope utterances where
+          this criterion is true.">fires</span></th>
+        {#- tipmulti renders newlines in data-tip as line breaks, so the
+            intro below has to stay on a single source line. -#}
+        <th><span class="tip tipmulti" data-tip="Agreement between {{ MODEL_TITLES|join(' and ') }} as measured by Krippendorff's &alpha; when annotating this assertion. Ranges from -1 to 1.
+1 = Total agreement
+0 = No agreement
+-1 = Total disagreement"><span class="nocaps">&alpha;</span></span></th>
+        <th><span class="tip tipright" data-tip="Number of times you have
+          disagreed with an annotation of this criterion.">disagreements</span></th>
+        {% if actions %}<th></th>{% endif %}
+      </tr>
+      {% for r in g.rows %}
+      <tr {% if jump %}class="jumpable"{% endif %}>
+        <td>{% if jump %}<a class="jumplink" href="#crit-{{ r.criterion_id }}"
+             title="Jump to this criterion in the editor">{% endif %}
+          <span class="mono muted">#{{ r.criterion_id }}</span>
+          {% if r.parent_text %}<span class="subtag" title="only asked where the gate is true">sub</span>{% endif %}
+          {{ r.text }}
+          {% if r.parent_text %}<div class="gateof">under: {{ r.parent_text }}</div>{% endif %}
+          {% if r.flag %}<div class="rowflag">{{ r.flag }}</div>{% endif %}
+          {% if jump %}</a>{% endif %}</td>
+        {# Each cell carries its own full-size anchor, so the whole row is a
+           click target without needing JS. #}
+        <td class="num">{% if jump %}<a class="jumplink" href="#crit-{{ r.criterion_id }}">{% endif %}
+          {% if r.fires is not none %}{{ '%.1f'|format(100 * r.fires) }}%{% else %}&mdash;{% endif %}
+          {% if jump %}</a>{% endif %}</td>
+        <td class="num">{% if jump %}<a class="jumplink" href="#crit-{{ r.criterion_id }}">{% endif %}
+          {% if r.alpha is not none %}{{ '%.2f'|format(r.alpha) }}{% else %}&mdash;{% endif %}
+          {% if jump %}</a>{% endif %}</td>
+        <td class="num">{% if jump %}<a class="jumplink" href="#crit-{{ r.criterion_id }}">{% endif %}
+          {% if r.human %}<span class="{{ 'bad' if r.human_flips }}">{{ r.human }}</span>{% else %}&mdash;{% endif %}
+          {% if jump %}</a>{% endif %}</td>
+        {% if actions %}
+        {# Edits in place: the row becomes a textarea plus a checkbox per
+           label. It used to link to Revise's hand editor, which meant a page
+           load and a scroll to an anchor for the commonest edit there is. #}
+        <td class="nowrap">
+          <button type="button" class="btn small ghost"
+            hx-get="{{ url_for('criterion_edit_form', cid=cid, crit_id=r.criterion_id) }}"
+            hx-target="closest tr" hx-swap="outerHTML">edit</button>
+        </td>
+        {% endif %}
+      </tr>
+      {% endfor %}
+    </table>
+    {% endif %}
+  </div>
+  {% endfor %}
+
+  {% if view.orphans %}
+  <div class="warn">
+    {{ view.orphans|length }} criterion(s) have no edges and can never affect a label:
+    {% for c in view.orphans %}<span class="cref">#{{ c.id }}</span>{% endfor %}
+  </div>
+  {% endif %}
+</div>

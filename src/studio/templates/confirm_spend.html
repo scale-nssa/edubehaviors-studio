@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Confirm — EduBehaviors Studio{% endblock %}
+{% block body %}
+<div class="card narrow">
+  <h1>{{ title }}</h1>
+  {% if blocked %}
+    <p class="bad"><strong>This would pass your spend cap.</strong> About
+    ${{ '%.2f'|format(est.usd) }} on top of ~${{ '%.2f'|format(lifetime) }} already
+    spent, against a cap of ${{ '%.2f'|format(cap) }}.</p>
+    <p><a class="btn" href="{{ url_for('setup.models') }}#spend">Change the cap</a>
+    {% if back %}<a class="btn ghost" href="{{ back }}">Back</a>{% endif %}</p>
+  {% else %}
+    <p>This will make about <strong>{{ est.calls }} model call{{ '' if est.calls == 1 else 's' }}</strong>,
+    roughly <strong>{{ '{:,}'.format(est.input_tokens) }}</strong> input and
+    <strong>{{ '{:,}'.format(est.output_tokens) }}</strong> output tokens:
+    {% if est.unpriced %}<strong>cost unknown</strong> (a model has no price set).
+    {% else %}about <strong>${{ '%.2f'|format(est.usd) }}</strong>{% if est.chain_sessions %},
+    up to <strong>${{ '%.2f'|format(est.usd_high) }}</strong>{% endif %}.{% endif %}</p>
+  {% endif %}
+
+  <table class="estimate">
+    <tr><th>Step</th><th>Model</th><th class="num">Calls</th><th class="num">In</th>
+        <th class="num">Out</th><th class="num">$</th></tr>
+    {% for l in est.lines %}
+    <tr><td>{{ l.label }}</td><td class="small">{{ l.model }}</td>
+        <td class="num">{{ l.calls }}</td>
+        <td class="num">{{ '{:,}'.format(l.input_tokens) }}</td>
+        <td class="num">{{ '{:,}'.format(l.output_tokens) }}</td>
+        <td class="num">{{ '%.3f'|format(l.usd) if l.usd is not none else '?' }}</td></tr>
+    {% endfor %}
+  </table>
+
+  <ul class="muted small">
+    {% if est.cached_calls %}<li>{{ est.cached_calls }} call(s) are already cached and cost nothing.</li>{% endif %}
+    {% for n in est.notes %}<li>{{ n }}</li>{% endfor %}
+    <li>An estimate: input is prompt length &divide; 4, output is
+    {% if est.guessed_output %}a generous guess until this data directory has some
+    history{% else %}the average of your past calls{% endif %}. Reasoning is billed
+    as output and is most of it.</li>
+    <li>Spent so far: ~${{ '%.2f'|format(lifetime) }} of your ${{ '%.2f'|format(cap) }} cap.</li>
+  </ul>
+
+  {% if not blocked %}
+  <form method="post" action="{{ action }}">
+    {% for k, v in fields.items() %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+    <input type="hidden" name="confirmed" value="1">
+    <button type="submit">Go ahead</button>
+    {% if back %}<a class="btn ghost" href="{{ back }}">Cancel</a>{% endif %}
+  </form>
+  {% endif %}
+</div>
+{% endblock %}

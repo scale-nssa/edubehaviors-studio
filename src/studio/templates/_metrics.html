@@ -1,0 +1,72 @@
+{# Two panes: are the labels right, and do the annotators agree. There was a
+   third, "Schema completeness & consistency" — dropped, because every number
+   in it already appears in the scoreboard directly above and again in the
+   tiles below, and the tiles additionally split out the rule-settled ones.
+   Three copies of one figure is not three metrics. #}
+<div class="panes">
+
+  <div class="pane">
+    {# "matched", not "exact": the scoreboard directly above already calls this
+       quantity a match, and `exact` is vocabulary from evaluate_gold that the
+       UI never defines. The percentage is spelled out because the bar beside
+       it is only a redrawing of the same ratio. #}
+    <h4>Where the schema matched you
+      <span class="muted">per label you've used</span></h4>
+    {% if s.by_label %}
+    <table class="compact">
+      {# "recall", not "accuracy": the denominator is YOUR labels, so this is
+         the share of your positives the schema caught. #}
+      <tr><th>your label</th><th>you labeled</th><th>schema matched</th>
+        <th><span class="tip tipright" data-tip="Of the utterances you labeled
+          this, the share the schema labeled it too.">schema recall</span></th>
+        <th></th></tr>
+      {% for r in s.by_label %}
+      <tr>
+        <td>{{ r.label }}</td>
+        <td class="num">{{ r.n }}</td>
+        <td class="num">{{ r.exact }}</td>
+        <td class="num">{% if r.pct is not none %}{{ (100 * r.pct)|round|int }}%
+          {% else %}&mdash;{% endif %}</td>
+        <td class="barcell"><span class="minibar"
+          title="{{ r.exact }} of {{ r.n }} matched"
+          style="width:{{ (100 * (r.pct or 0))|round(0) }}%"></span></td>
+      </tr>
+      {% endfor %}
+    </table>
+    {# Rows come from the labels you have actually assigned, not the label
+       space. With one row the figure is recall on that label and says nothing
+       about what the schema labels it wrongly. #}
+    <p class="muted small">Only labels you&rsquo;ve used appear.</p>
+    {% else %}<p class="muted small">Nothing labeled yet.</p>{% endif %}
+  </div>
+
+  <div class="pane">
+    <h4>Criteria <span class="muted">annotator agreement</span></h4>
+    {# Two lists, not a filter. A criterion nothing fired has an undefined
+       alpha, and it used to be dropped from this pane entirely — which hid
+       exactly the rows worth seeing, since "never fires" is a schema problem.
+       They are kept, shown with a dash, and sorted last because they cannot
+       be ranked against a real agreement figure. #}
+    {% set rows = [] %}{% set unfired = [] %}
+    {% for cr in s.criteria %}{% set st = s.criterion_stats.get(cr.id, {}) %}
+      {% if st.get('alpha') is not none %}{% set _ = rows.append((cr, st)) %}
+      {% else %}{% set _ = unfired.append((cr, st)) %}{% endif %}
+    {% endfor %}
+    {% if rows or unfired %}
+    <table class="stretch">
+      <tr><th>criterion</th><th><span class="nocaps">&alpha;</span></th><th>fires</th></tr>
+      {% for cr, st in (rows|sort(attribute='1.alpha')) + unfired %}
+      <tr>
+        <td class="clip" title="{{ cr.text }}"><span class="mono muted">#{{ cr.id }}</span> {{ cr.text }}</td>
+        <td class="num {{ 'bad' if st.get('alpha') is not none and st.alpha < 0.4 }}">
+          {% if st.get('alpha') is not none %}{{ '%.2f'|format(st.alpha) }}
+          {% else %}&mdash;{% endif %}</td>
+        <td class="num muted">{% if st.fires is not none %}{{ '%.0f'|format(100 * st.fires) }}%{% else %}&mdash;{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    <p class="muted small">Worst agreement first.</p>
+    {% else %}<p class="muted small">No annotations yet.</p>{% endif %}
+  </div>
+
+</div>

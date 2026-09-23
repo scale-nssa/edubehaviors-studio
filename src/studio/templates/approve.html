@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="approvegrid">
+<div class="card">
+  <div class="row-between">
+    <h1>Approve criteria</h1>
+    <span class="muted">{{ remaining }} left of {{ total }}</span>
+  </div>
+
+  {% if problems %}
+  <div class="warn"><strong>Not a valid edge set:</strong>
+    <ul>{% for p in problems %}<li>{{ p }}</li>{% endfor %}</ul>
+  </div>
+  {% endif %}
+
+  <form method="post" action="{{ url_for('approve_decide', cid=c['id'], crit_id=crit['id']) }}">
+    <label>Criterion</label>
+    <textarea name="text" rows="3">{{ crit['text'] }}</textarea>
+
+    {% if children %}
+    <div class="gatebox">
+      <strong>This is a gate.</strong> It carries no labels itself — it decides
+      whether its sub-criteria are asked at all, and they are only annotated on
+      utterances where it is true.
+      <ul>
+        {% for k, kedges in children %}
+        <li>{{ k['text'] }}
+          <span class="muted small">{% for e in kedges %}&rarr;{{ e.label }} {% endfor %}</span>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% else %}
+    <label>Evidence for</label>
+    <table class="edges">
+      {% set wired = edges|map(attribute='label')|list %}
+      {% for lbl in labels %}
+      <tr>
+        <td class="lbl">{{ lbl }}</td>
+        <td>
+          <label class="radio">
+            <input type="checkbox" name="edge_{{ lbl }}"
+              {% if lbl in wired %}checked{% endif %}> evidence for {{ lbl }}
+          </label>
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+    <p class="muted small">Every edge means the same thing &mdash; when this
+    criterion is true, that is evidence for the label. Nothing settles or rules
+    out. Tick every label this behaviour points at, and at least one.</p>
+    {% endif %}
+
+    {% macro example(ex, i, n) %}
+      {# A miniature of Review's transcript pane: the target in context.
+         The caption is load-bearing, not decoration — macOS draws overlay
+         scrollbars, so a clipped column looked like a layout bug rather than
+         a list you can scroll. "2 of 3" says there is more without relying on
+         the scrollbar appearing. #}
+      <div class="excap">example {{ i }} of {{ n }}
+        <span class="muted">&middot; utterance {{ ex.target }}</span></div>
+      <div class="transcript mini">
+        {% for u in ex.window %}
+        <div class="utt {{ u.role }} {% if u.index == ex.target %}target{% endif %}">
+          <span class="ix">{{ u.index }}</span>
+          <span class="role">{{ u.role }}</span>
+          <span class="txt">{{ u.text }}</span>
+        </div>
+        {% endfor %}
+      </div>
+    {% endmacro %}
+
+    <div class="examples">
+      <div class="excol">
+        <h3>Fires ({{ examples.n_true }} in this session)</h3>
+        <div class="exlist">
+          {% for ex in examples.true %}{{ example(ex, loop.index, loop.length) }}
+          {% else %}<p class="muted">never fires here</p>{% endfor %}
+        </div>
+      </div>
+      <div class="excol">
+        <h3>Does not fire ({{ examples.n_false }} in this session)</h3>
+        <div class="exlist">
+          {% for ex in examples.false %}{{ example(ex, loop.index, loop.length) }}{% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <div class="actionbar">
+      <button type="submit" name="action" value="accept">Accept &rarr;</button>
+      <button type="submit" name="action" value="exclude" class="ghost">Exclude</button>
+      <span class="muted small">{{ remaining }} left</span>
+    </div>
+  </form>
+</div>
+
+<aside class="sidebar">
+  <div class="card">
+    <h3>Approved so far</h3>
+    {% if side.n_edges %}
+      <table class="counts">
+        {% for g in side.labels %}
+        <tr>
+          <td>{{ g.label }}</td>
+          <td class="num">{{ g.rows|length }}</td>
+          <td>{% if g.warning %}<span class="dotwarn" title="{{ g.warning }}">!</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </table>
+    {% else %}
+      <p class="muted small">Nothing approved yet. Labels will fill in here.</p>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h3>Your description</h3>
+    <div class="descbox">{{ c['description'] }}</div>
+  </div>
+</aside>
+</div>
+{% endblock %}

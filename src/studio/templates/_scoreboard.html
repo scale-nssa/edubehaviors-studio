@@ -1,0 +1,76 @@
+{# Two scoreboards, because they cost different things.
+   Correctness needs gold and is sampled; consistency is free and total. #}
+<div class="scoreboard">
+  <div class="score">
+    <div class="big {% if s.correctness.pct is not none and s.correctness.pct >= 0.9 %}good{% endif %}">
+      {{ s.correctness.exact }}<span class="of">/ {{ s.correctness.n }}</span>
+    </div>
+    {# "routed" was internal vocabulary from apply_map — nothing in the UI ever
+       tells anyone an utterance gets routed anywhere. Deliberately NOT phrased
+       as agreement or disagreement: alpha already means model-vs-model and the
+       schema table's "disagreements" column means you-vs-both-models, and this
+       is a third thing (your label vs the schema's). #}
+    <div class="lab">utterances matched your label<br>
+      <span class="muted">of what you've labeled</span></div>
+    {% if s.correctness.n %}
+    <div class="breakdown">
+      <span class="chip">{{ (100 * s.correctness.exact / s.correctness.n)|round|int }}% accuracy</span>
+      {# "N mismatch" is dropped: with the fraction above it, it is arithmetic.
+         `under` and `over_contains` are not — they say HOW the schema missed,
+         which the fraction cannot. They only occur on multi-label constructs
+         (the catch-all makes both unreachable in a binary one), and once they
+         are shown the mismatch count is implied too. #}
+      {% for k in ['under', 'over_contains'] %}
+        {% if s.correctness.counts.get(k) %}
+        <span class="chip">{{ s.correctness.counts[k] }} {{ MISMATCH_LABEL[k] }}</span>
+        {% endif %}
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+
+  {% if s.positive_label %}
+  {# Binary: the consistency pane opposite is vacuous here. It reports
+     over-labelled and under-labelled counts, and NEITHER is reachable when
+     there are two labels and one is the catch-all — the catch-all rule
+     collapses two candidates, and the catch-all itself absorbs silence. So it
+     read "clean" no matter how good or bad the schema was. Coverage is the
+     number that actually moves: how much of the session you have worked. #}
+  <div class="score">
+    <div class="big {% if s.n_in_scope and s.correctness.n >= s.n_in_scope %}good{% endif %}">
+      {{ s.correctness.n }}<span class="of">/ {{ s.n_in_scope }}</span>
+    </div>
+    <div class="lab">utterances reviewed<br>
+      <span class="muted">of the {{ s.scope }} utterances annotated here</span></div>
+    <div class="breakdown">
+      {% if s.n_in_scope %}
+        <span class="chip">{{ (100 * s.correctness.n / s.n_in_scope)|round|int }}%
+          of the session</span>
+      {% else %}
+        <span class="chip">no {{ s.scope }} utterances in this session</span>
+      {% endif %}
+    </div>
+  </div>
+  {% else %}
+  <div class="score">
+    <div class="big {% if s.is_clean %}good{% endif %}">
+      {{ s.consistent }}<span class="of">/ {{ s.n_in_scope }}</span>
+    </div>
+    <div class="lab">decided by your criteria<br>
+      <span class="muted">whole session, no gold needed</span></div>
+    <div class="breakdown">
+      {% if s.logic.counts.over %}<span class="chip">{{ s.logic.counts.over }} competing labels</span>{% endif %}
+      {% if s.logic.counts.under %}<span class="chip">{{ s.logic.counts.under }} no label</span>{% endif %}
+      {% if s.logic.counts.tier3 %}<span class="chip">{{ s.logic.counts.tier3 }} settled by a rule</span>{% endif %}
+      {% if s.logic.counts.default %}<span class="chip">{{ s.logic.counts.default }} took the catch-all</span>{% endif %}
+      {% if not s.n_in_scope %}<span class="chip">no {{ s.scope }} utterances
+        in this session</span>{% endif %}
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% if s.is_clean and not s.positive_label %}
+<p class="muted small">Consistency is clean across the whole session &mdash; every
+utterance gets exactly one label. That is the finish line that doesn't depend on
+how much you've judged.</p>
+{% endif %}
